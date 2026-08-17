@@ -13,7 +13,7 @@
     "build": "tsc --noEmit && vite build",
     "lint": "eslint .",
     "start": "electron .",
-    "dist:win": "pnpm run build && electron-builder --win nsis",
+    "dist:win": "pnpm run build && electron-builder --win nsis --publish never",
     "dist:signed": "pnpm run build && electron-builder --win nsis --publish never -c.forceCodeSigning=true",
     "test": "pnpm run test:node && pnpm run test:unit",
     "test:node": "node --test tests/config-file.test.cjs tests/ai-review.test.cjs tests/hardware-detection.test.cjs",
