@@ -1,98 +1,62 @@
-# vinext-starter
+# FlightTune for Windows
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+FlightTune is a native Windows desktop application for VR flying in Microsoft
+Flight Simulator 2024. It builds conservative `UserCfg.opt` recommendations
+from the hardware and OpenXR headset installed in the current PC.
 
-## Prerequisites
+## VR profiles
 
-- Node.js `>=22.13.0`
+- **VR VFR:** prioritizes scenery, terrain detail, and nearby landmarks.
+- **VR IFR:** protects headroom for avionics and glass-cockpit aircraft.
+- **TAA:** preferred for crisp glass-cockpit displays.
+- **DLSS:** includes the MSFS presets Auto, DLAA, Quality, Balanced,
+  Performance, and Ultra Performance.
 
-## Quick Start
+## Manual profile library
 
-```bash
-npm install
-npm run dev
-npm run build
+FlightTune can keep multiple local snapshots of manually tuned MSFS 2024
+configurations. Set the graphics and VR options in MSFS, close the simulator,
+load its `UserCfg.opt` into FlightTune, enter a profile name, and choose
+**Save current profile**. Selecting **Load & apply** later creates a timestamped
+backup and restores the snapshot to the same live `UserCfg.opt`, after explicit
+confirmation. Deleting a profile removes only FlightTune's snapshot and never
+changes the live MSFS configuration.
+
+## Automatic detection
+
+At startup, FlightTune reads:
+
+- CPU model from Windows hardware inventory, with a registry fallback
+- Primary NVIDIA, AMD, or Intel GPU
+- Dedicated VRAM from the 64-bit Windows display-adapter registry value
+- Connected VR headset from Plug and Play devices
+- Active OpenXR runtime for Meta, SteamVR, Pimax, Varjo, Vive, or WMR
+- Active monitor when no headset is found
+
+All detected values can be manually corrected in the interface.
+
+## Development
+
+Requirements: Windows 10/11, Node.js 22+, and pnpm.
+
+```powershell
+pnpm install
+pnpm run test:hardware
+pnpm run dev
 ```
 
-This starter does not use `wrangler.jsonc`.
+## Build
 
-## Included Shape
-
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```powershell
+pnpm run build
+pnpm run dist:win
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+Installers are written to `release/`.
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+## Optional AI review
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+Open **ChatGPT API** in the app to save and test an OpenAI API key. FlightTune
+encrypts the saved key with Windows secure storage. `OPENAI_API_KEY` is also
+supported and takes priority. Without a key, the deterministic local hardware
+profile remains fully available.
