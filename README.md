@@ -1,6 +1,6 @@
 # FlightTune for Windows
 
-FlightTune is a native Windows desktop application for VR flying in Microsoft
+FlightTune is a Windows desktop application for VR flying in Microsoft
 Flight Simulator 2024. It builds conservative `UserCfg.opt` recommendations
 from the hardware and OpenXR headset installed in the current PC.
 
@@ -43,6 +43,8 @@ Requirements: Windows 10/11, Node.js 22+, and pnpm.
 
 ```powershell
 pnpm install
+pnpm run lint
+pnpm run test
 pnpm run test:hardware
 pnpm run dev
 ```
@@ -56,9 +58,29 @@ pnpm run dist:win
 
 Installers are written to `release/`.
 
+CI builds an unsigned installer for validation. Public releases must use the
+certificate-gated signed release workflow with `WIN_CSC_LINK` and
+`WIN_CSC_KEY_PASSWORD` configured as GitHub Actions secrets. The workflow fails
+if Authenticode signing is unavailable or invalid; certificates and passwords
+must never be committed.
+
 ## Optional AI review
 
-Open **ChatGPT API** in the app to save and test an OpenAI API key. FlightTune
+Open **OpenAI API** in the app to save and test an OpenAI API key. FlightTune
 encrypts the saved key with Windows secure storage. `OPENAI_API_KEY` is also
 supported and takes priority. Without a key, the deterministic local hardware
 profile remains fully available.
+
+AI review is disabled until the user explicitly consents. When enabled,
+FlightTune uses GPT-5.6 Luna and sends only sanitized CPU, GPU, VRAM and headset
+labels plus recognized tunable settings. It does not send the complete
+`UserCfg.opt`, file paths, or the API key. Every
+returned change is checked locally against an allowlist and safe range before
+it can appear in the review. API errors are shown and the local profile is used
+as a fallback.
+
+## Project policy
+
+FlightTune is available under the MIT License. See `SECURITY.md` for private
+vulnerability reporting, `CONTRIBUTING.md` for development guidance, and
+`CHANGELOG.md` for notable changes.

@@ -1,16 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-
-type FlightMode = "vfr" | "ifr";
-type AntiAliasing = "TAA" | "DLSS";
-type DlssMode = "Auto" | "DLAA" | "Quality" | "Balanced" | "Performance" | "Ultra Performance";
-type Change = {
-  line: number;
-  setting: string;
-  from: string;
-  to: string;
-  reason: string;
-  impact: "CPU" | "GPU" | "VRAM" | "VR";
-};
+import { applyChanges, createPlan, type AntiAliasing, type Change, type DlssMode, type FlightMode } from "./optimizer";
 
 const SAMPLE_CONFIG = `Version 1.1
 {Video
@@ -45,119 +34,6 @@ const knownDisplays = [
   "Other OpenXR headset",
 ];
 
-function scoreCpu(cpu: string) {
-  const value = cpu.toLowerCase();
-  if (/x3d|ultra 9|i9|ryzen 9|9950|9900|9800|7950|7800|14900|13900/.test(value)) return 3;
-  if (/i7|ryzen 7|9700|7700|14700|13700|12700/.test(value)) return 2;
-  return 1;
-}
-
-function fixedLike(value: string, next: number) {
-  return value.includes(".") ? next.toFixed(6) : String(Math.round(next));
-}
-
-function createPlan(
-  config: string,
-  cpu: string,
-  vram: number,
-  display: string,
-  flightMode: FlightMode,
-  antiAliasing: AntiAliasing,
-  dlssMode: DlssMode,
-) {
-  const cpuTier = scoreCpu(cpu);
-  const scaleBase = vram >= 20 ? 0.98 : vram >= 12 ? 0.9 : vram >= 8 ? 0.8 : 0.7;
-  const terrain = (flightMode === "vfr" ? [1.25, 1.65, 2.05] : [1.05, 1.3, 1.55])[cpuTier - 1];
-  const objects = Math.max(0.8, terrain - (flightMode === "vfr" ? 0.15 : 0.3));
-  const lines = config.split(/\r?\n/);
-  const changes: Change[] = [];
-  let section = "";
-
-  lines.forEach((line, index) => {
-    const opening = line.match(/^\s*\{([^\s}]+)/);
-    if (opening) section = opening[1];
-    const valueMatch = line.match(/^(\s*)(PrimaryScaling|SecondaryScaling|LoDFactor|AntiAliasing|DLSSMode)\s+(.+?)(\s*)$/);
-    if (!valueMatch) return;
-
-    const key = valueMatch[2];
-    const current = valueMatch[3];
-    let next: number | null = null;
-    let reason = "";
-    let impact: Change["impact"] = "GPU";
-
-    if (key === "SecondaryScaling") {
-      next = Math.max(0.6, Math.min(1.1, scaleBase + (antiAliasing === "DLSS" ? 0.03 : 0)));
-      reason = flightMode === "ifr"
-        ? "Keeps cockpit instruments readable while protecting VR frame-time."
-        : "Balances per-eye scenery clarity against detected VRAM.";
-      impact = "VR";
-    } else if (key === "LoDFactor" && /terrain/i.test(section)) {
-      next = terrain;
-      reason = "Terrain detail is matched to the detected CPU and performance target.";
-      impact = "CPU";
-    } else if (key === "LoDFactor" && /objects/i.test(section)) {
-      next = objects;
-      reason = flightMode === "ifr"
-        ? "Reduces distant object load so glass-cockpit avionics retain CPU headroom."
-        : "Keeps nearby VFR landmarks detailed without matching the full terrain load.";
-      impact = "CPU";
-    } else if (key === "AntiAliasing") {
-      const replacement = antiAliasing;
-      if (replacement !== current.toUpperCase()) {
-        changes.push({
-          line: index,
-          setting: "Video · AntiAliasing",
-          from: current,
-          to: replacement,
-          reason: antiAliasing === "TAA"
-            ? "TAA is preferred for crisp glass-cockpit and avionics text."
-            : "DLSS can recover GPU headroom for scenery-heavy VR VFR flying.",
-          impact: "VR",
-        });
-      }
-      return;
-    } else if (key === "DLSSMode") {
-      if (antiAliasing === "DLSS" && dlssMode !== current) {
-        changes.push({
-          line: index,
-          setting: "Video · DLSSMode",
-          from: current,
-          to: dlssMode,
-          reason: `${dlssMode} matches the selected MSFS DLSS Super Resolution preset.`,
-          impact: "GPU",
-        });
-      }
-      return;
-    }
-
-    if (next === null) return;
-    const replacement = fixedLike(current, next);
-    if (replacement !== current) {
-      changes.push({ line: index, setting: `${section || "Video"} · ${key}`, from: current, to: replacement, reason, impact });
-    }
-  });
-
-  return {
-    changes,
-    summary: `${flightMode === "vfr" ? "VR VFR scenery" : "VR IFR glass-cockpit"} profile for ${display}, using ${antiAliasing}${antiAliasing === "DLSS" ? ` ${dlssMode}` : ""}`,
-  };
-}
-
-function applyChanges(config: string, changes: Change[]) {
-  const lines = config.split(/\r?\n/);
-  for (const change of changes) {
-    const line = lines[change.line];
-    if (!line) continue;
-    const escaped = change.from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const replaced = line.replace(
-      new RegExp(`(\\s)${escaped}(\\s*)$`),
-      (_match, space: string, trailing: string) => `${space}${change.to}${trailing}`,
-    );
-    if (replaced !== line) lines[change.line] = replaced;
-  }
-  return lines.join("\n");
-}
-
 export default function App() {
   const [cpu, setCpu] = useState("Detecting processor…");
   const [gpu, setGpu] = useState("Detecting graphics adapter…");
@@ -179,6 +55,8 @@ export default function App() {
   const [saveMessage, setSaveMessage] = useState("");
   const [engine, setEngine] = useState<"Local" | "AI">("Local");
   const [apiOpen, setApiOpen] = useState(false);
+  const [aiConsent, setAiConsent] = useState(false);
+  const [reviewNotice, setReviewNotice] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [apiConfigured, setApiConfigured] = useState(false);
   const [apiSource, setApiSource] = useState<string | null>(null);
@@ -286,7 +164,7 @@ export default function App() {
       return;
     }
     setProfileName("");
-    setProfileMessage(`Saved \"${result.profile.name}\" to the local profile library.`);
+    setProfileMessage(`Saved "${result.profile.name}" to the local profile library.`);
     await refreshManualProfiles(result.profile.id);
     setProfileBusy(false);
   };
@@ -317,7 +195,7 @@ export default function App() {
     setOptimized("");
     setStatus("idle");
     setSaveMessage("");
-    setProfileMessage(`Applied \"${saved.name}\" to UserCfg.opt. Backup saved to ${result.backupPath}`);
+    setProfileMessage(`Applied "${saved.name}" to UserCfg.opt. Backup saved to ${result.backupPath}`);
     setProfileBusy(false);
   };
 
@@ -340,13 +218,16 @@ export default function App() {
 
   const optimize = async () => {
     setStatus("working");
+    setReviewNotice("");
     let result = createPlan(config, cpu, vram, display, flightMode, antiAliasing, dlssMode);
     let selectedEngine: "Local" | "AI" = "Local";
-    if (window.flightTune) {
-      const ai = await window.flightTune.reviewConfig({ config, cpu, gpu, vram, display, flightMode, antiAliasing, dlssMode });
+    if (window.flightTune && apiConfigured && aiConsent) {
+      const ai = await window.flightTune.reviewConfig({ config, cpu, gpu, vram, display, flightMode, antiAliasing, dlssMode, consent: true });
       if (ai.ok) {
         result = { changes: ai.changes, summary: ai.summary };
         selectedEngine = "AI";
+      } else {
+        setReviewNotice(ai.error);
       }
     }
     setChanges(result.changes);
@@ -386,6 +267,7 @@ export default function App() {
     const result = await window.flightTune.clearApiKey();
     setApiConfigured(result.configured);
     setApiSource(result.source);
+    setAiConsent(false);
     setApiKey("");
     setApiMessage(result.source === "environment"
       ? "The saved key was cleared. OPENAI_API_KEY is still active."
@@ -408,7 +290,7 @@ export default function App() {
             onClick={() => setApiOpen((open) => !open)}
           >
             <i />
-            ChatGPT API
+            OpenAI API
           </button>
           <button className="detect-button" type="button" onClick={detect} disabled={detecting}>
             {detecting ? <i className="spinner" /> : <i className="scan-dot" />}
@@ -429,8 +311,8 @@ export default function App() {
             <b>{flightMode.toUpperCase()}</b>
           </div>
           <div className="gauge">
-            <span style={{ "--gauge": `${Math.min(92, 46 + vram * 2)}%` } as React.CSSProperties} />
-            <div><strong>{profile.fps}</strong><small>target fps</small></div>
+            <span />
+            <div><strong>{profile.fps}</strong><small>profile target</small></div>
           </div>
           <div className="profile-meta">
             <div><small>CLASS</small><strong>{profile.tier}</strong></div>
@@ -455,7 +337,7 @@ export default function App() {
           ))}
           <div className="safe-note">
             <span>✓</span>
-            <p><strong>Local detection</strong>Hardware inventory stays on this PC. Manual fields remain editable.</p>
+            <p><strong>Local by default</strong>Hardware stays on this PC unless you explicitly enable the optional OpenAI review.</p>
           </div>
         </aside>
 
@@ -493,17 +375,17 @@ export default function App() {
           </div>
 
           {apiOpen && (
-            <section className="api-settings" aria-label="ChatGPT API settings">
+            <section className="api-settings" aria-label="OpenAI API settings">
               <div className="api-settings-head">
                 <div>
-                  <p className="eyebrow">CHATGPT API</p>
+                  <p className="eyebrow">OPENAI API</p>
                   <h3>{apiConfigured ? "AI review is connected" : "Add optional AI review"}</h3>
                 </div>
                 <span className={apiConfigured ? "api-status connected" : "api-status"}>
                   {apiConfigured ? (apiSource === "environment" ? "Environment key" : "Key secured") : "Not connected"}
                 </span>
               </div>
-              <p>Enter an OpenAI API key to let GPT review the local hardware plan. Optimization still works without it.</p>
+              <p>Optional GPT-5.6 Luna review. FlightTune sends only CPU/GPU/VRAM/headset labels and recognized tunable settings—never the complete file, file paths, or your API key.</p>
               <div className="api-key-row">
                 <input
                   type="password"
@@ -520,7 +402,16 @@ export default function App() {
                   <button className="api-clear" type="button" onClick={clearApi} disabled={apiBusy}>Remove</button>
                 )}
               </div>
-              <small>Saved keys are encrypted by Windows and never written into UserCfg.opt.</small>
+              <label className="api-consent">
+                <input
+                  type="checkbox"
+                  checked={aiConsent}
+                  onChange={(event) => setAiConsent(event.target.checked)}
+                  disabled={!apiConfigured}
+                />
+                <span>I consent to sending the minimized fields described above to OpenAI when I optimize.</span>
+              </label>
+              <small>Saved keys are encrypted by Windows and never written into UserCfg.opt. You can optimize locally without enabling AI review.</small>
               {apiMessage && <p className="api-message">{apiMessage}</p>}
             </section>
           )}
@@ -639,8 +530,9 @@ export default function App() {
         <section className="results">
           <div className="results-head">
             <div><p className="eyebrow">04 / REVIEW</p><h2>{changes.length ? `${changes.length} focused adjustments` : "No safe changes found"}</h2><p>{summary}. Review every change before replacing your file.</p></div>
-            <span className="engine">{engine === "AI" ? "AI reviewed" : "Local hardware profile"}</span>
+            <span className="engine">{engine === "AI" ? "AI reviewed · GPT-5.6 Luna" : "Local hardware profile"}</span>
           </div>
+          {reviewNotice && <div className="review-notice" role="status"><strong>AI review unavailable.</strong> {reviewNotice}</div>}
           <div className="change-list">
             {changes.map((change) => (
               <article key={`${change.line}-${change.setting}`}>

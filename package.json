@@ -2,6 +2,8 @@
   "name": "flighttune",
   "version": "1.1.1",
   "private": true,
+  "license": "MIT",
+  "packageManager": "pnpm@11.19.0",
   "author": "Andrew Brown",
   "description": "Native Windows hardware-aware MSFS 2024 UserCfg.opt optimizer",
   "main": "electron/main.cjs",
@@ -9,9 +11,13 @@
   "scripts": {
     "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && cross-env ELECTRON_RENDERER_URL=http://127.0.0.1:5173 electron .\"",
     "build": "tsc --noEmit && vite build",
+    "lint": "eslint .",
     "start": "electron .",
     "dist:win": "pnpm run build && electron-builder --win nsis",
-    "test": "node --test tests/config-file.test.cjs",
+    "dist:signed": "pnpm run build && electron-builder --win nsis --publish never -c.forceCodeSigning=true",
+    "test": "pnpm run test:node && pnpm run test:unit",
+    "test:node": "node --test tests/config-file.test.cjs tests/ai-review.test.cjs tests/hardware-detection.test.cjs",
+    "test:unit": "vitest run",
     "test:hardware": "powershell -NoProfile -ExecutionPolicy Bypass -File electron/detect-hardware.ps1"
   },
   "dependencies": {
@@ -19,6 +25,7 @@
     "react-dom": "19.2.6"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
@@ -27,8 +34,12 @@
     "cross-env": "10.1.0",
     "electron": "43.4.0",
     "electron-builder": "26.15.3",
+    "eslint": "^10.8.1",
+    "globals": "^17.11.0",
     "typescript": "5.9.3",
+    "typescript-eslint": "^8.67.0",
     "vite": "8.2.1",
+    "vitest": "^4.1.10",
     "wait-on": "9.0.3"
   },
   "build": {

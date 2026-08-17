@@ -1,0 +1,52 @@
+name: Signed Windows release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Require signing secrets
+        shell: pwsh
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WIN_CSC_LINK)) { throw "WIN_CSC_LINK is required" }
+          if ([string]::IsNullOrWhiteSpace($env:WIN_CSC_KEY_PASSWORD)) { throw "WIN_CSC_KEY_PASSWORD is required" }
+      - run: pnpm run lint
+      - run: pnpm run test
+      - run: pnpm audit --audit-level high
+      - name: Build signed installer
+        run: pnpm run dist:signed
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      - name: Verify Authenticode signature
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem release/FlightTune-Setup-*.exe | Select-Object -First 1).FullName
+          ./scripts/assert-signed.ps1 -Path $installer
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FlightTune-Windows-signed
+          path: |
+            release/FlightTune-Setup-*.exe
+            release/FlightTune-Setup-*.exe.blockmap
+          if-no-files-found: error

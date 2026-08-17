@@ -43,9 +43,9 @@ interface Window {
       | { ok: false; error: string }
     >;
     deleteManualProfile: (id: string) => Promise<{ ok: true; deleted: boolean } | { ok: false; error: string }>;
-    reviewConfig: (payload: { config: string; cpu: string; gpu: string; vram: number; display: string; flightMode: string; antiAliasing: string; dlssMode: string }) => Promise<
-      { ok: true; summary: string; changes: Array<{ line: number; setting: string; from: string; to: string; reason: string; impact: "CPU" | "GPU" | "VRAM" | "VR" }> }
-      | { ok: false; reason: string }
+    reviewConfig: (payload: { config: string; cpu: string; gpu: string; vram: number; display: string; flightMode: string; antiAliasing: string; dlssMode: string; consent: true }) => Promise<
+      { ok: true; summary: string; model: string; changes: Array<{ line: number; setting: string; from: string; to: string; reason: string; impact: "CPU" | "GPU" | "VRAM" | "VR" }> }
+      | { ok: false; reason: string; error: string }
     >;
     getApiStatus: () => Promise<{ configured: boolean; source: string | null }>;
     saveApiKey: (key: string) => Promise<
