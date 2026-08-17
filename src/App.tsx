@@ -62,7 +62,7 @@ export default function App() {
   const [apiSource, setApiSource] = useState<string | null>(null);
   const [apiMessage, setApiMessage] = useState("");
   const [apiBusy, setApiBusy] = useState(false);
-  const [appVersion, setAppVersion] = useState("1.1.1");
+  const [appVersion, setAppVersion] = useState("2.0.0");
   const [manualProfiles, setManualProfiles] = useState<ManualProfileSummary[]>([]);
   const [profileName, setProfileName] = useState("");
   const [selectedProfileId, setSelectedProfileId] = useState("");

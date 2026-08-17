@@ -2,7 +2,7 @@
 
 Notable changes to FlightTune are recorded here.
 
-## Unreleased
+## 2.0.0 - 2026-08-17
 
 ### Added
 
