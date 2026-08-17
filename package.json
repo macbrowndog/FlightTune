@@ -11,6 +11,7 @@
     "build": "tsc --noEmit && vite build",
     "start": "electron .",
     "dist:win": "pnpm run build && electron-builder --win nsis",
+    "test": "node --test tests/config-file.test.cjs",
     "test:hardware": "powershell -NoProfile -ExecutionPolicy Bypass -File electron/detect-hardware.ps1"
   },
   "dependencies": {

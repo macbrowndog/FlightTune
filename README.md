@@ -18,9 +18,11 @@ FlightTune can keep multiple local snapshots of manually tuned MSFS 2024
 configurations. Set the graphics and VR options in MSFS, close the simulator,
 load its `UserCfg.opt` into FlightTune, enter a profile name, and choose
 **Save current profile**. Selecting **Load & apply** later creates a timestamped
-backup and restores the snapshot to the same live `UserCfg.opt`, after explicit
-confirmation. Deleting a profile removes only FlightTune's snapshot and never
-changes the live MSFS configuration.
+and byte-verified backup, then atomically restores the snapshot to the same live
+`UserCfg.opt`, after explicit confirmation. FlightTune refuses to apply a
+profile while an MSFS process is running and preserves the file's original BOM,
+encoding, and line endings. Deleting a profile removes only FlightTune's
+snapshot and never changes the live MSFS configuration.
 
 ## Automatic detection
 

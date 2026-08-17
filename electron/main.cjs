@@ -4,8 +4,10 @@ const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { promisify } = require("node:util");
+const { atomicReplaceWithBackup, decodeConfigBuffer } = require("./config-file.cjs");
 
 const execFileAsync = promisify(execFile);
+const MSFS_PROCESS_IMAGES = ["FlightSimulator2024.exe", "FlightSimulator.exe"];
 
 // The interface is deliberately CPU-rendered so it also starts reliably on
 // systems with broken, remote, or recently changed graphics drivers.
@@ -25,6 +27,19 @@ async function detectHardware() {
   );
   const result = JSON.parse(stdout.trim());
   return { ...result, source: "Windows hardware inventory" };
+}
+
+async function isMsfsRunning() {
+  for (const image of MSFS_PROCESS_IMAGES) {
+    const { stdout } = await execFileAsync(
+      "tasklist.exe",
+      ["/FI", `IMAGENAME eq ${image}`, "/FO", "CSV", "/NH"],
+      { windowsHide: true, timeout: 5000, maxBuffer: 256 * 1024 },
+    );
+    const firstField = stdout.trim().match(/^"([^"]+)"/i)?.[1];
+    if (firstField?.toLowerCase() === image.toLowerCase()) return true;
+  }
+  return false;
 }
 
 function settingsPath() {
@@ -121,28 +136,25 @@ async function applyManualProfile(id) {
   if (!target?.isFile()) {
     return { ok: false, error: "The original UserCfg.opt can no longer be found. Import it again before applying this profile." };
   }
+  if (await isMsfsRunning()) {
+    return { ok: false, error: "MSFS is currently running. Close the simulator completely before applying a profile." };
+  }
   const confirmation = await dialog.showMessageBox({
     type: "warning",
     title: "Load profile into MSFS",
     message: `Apply \"${profile.name}\" to the live UserCfg.opt?`,
-    detail: `Close MSFS 2024 before continuing. FlightTune will back up and then overwrite:\n\n${targetPath}`,
+    detail: `FlightTune will verify MSFS is closed, create and verify a backup, then atomically replace:\n\n${targetPath}`,
     buttons: ["Cancel", "Back up and apply"],
     defaultId: 0,
     cancelId: 0,
     noLink: true,
   });
   if (confirmation.response !== 1) return { ok: true, canceled: true };
-
-  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
-  const backupPath = `${targetPath}.flighttune-backup-${stamp}`;
-  const original = await fs.readFile(targetPath);
-  await fs.writeFile(backupPath, original, { flag: "wx" });
-  try {
-    await fs.writeFile(targetPath, profile.content, "utf8");
-  } catch (error) {
-    await fs.writeFile(targetPath, original).catch(() => {});
-    throw error;
+  if (await isMsfsRunning()) {
+    return { ok: false, error: "MSFS started while FlightTune was waiting. Close it completely and try again." };
   }
+
+  const { backupPath } = await atomicReplaceWithBackup(targetPath, profile.content);
   return { ok: true, canceled: false, profile, appliedPath: targetPath, backupPath };
 }
 
@@ -363,7 +375,8 @@ ipcMain.handle("config:pick", async () => {
   });
   if (result.canceled || !result.filePaths[0]) return { canceled: true };
   const filePath = result.filePaths[0];
-  return { canceled: false, name: path.basename(filePath), path: filePath, content: await fs.readFile(filePath, "utf8") };
+  const { text } = decodeConfigBuffer(await fs.readFile(filePath));
+  return { canceled: false, name: path.basename(filePath), path: filePath, content: text };
 });
 
 ipcMain.handle("config:save", async (_event, payload) => {
